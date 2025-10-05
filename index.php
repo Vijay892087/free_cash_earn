@@ -1,13 +1,27 @@
-<?php include "config.php"; ?>
-<?php
-// Calculate total claims so far
+<?php 
+include "config.php";
+
+// ----------------- AUTO-GENERATE CSV IF NOT EXISTS -----------------
+if (!file_exists($csv_file)) {
+    $f = fopen($csv_file, 'w'); // create new CSV file
+    // Optional: add header row
+    fputcsv($f, ['Phone', 'Account Number', 'IFSC Code', 'Claim', 'Time']);
+    fclose($f);
+}
+
+// ----------------- CALCULATE TOTAL CLAIMS -----------------
 $total_claims = 0;
 if(file_exists($csv_file)){
     $data = array_map('str_getcsv', file($csv_file));
-    $total_claims = count($data);
+    // Ignore header row if exists
+    if (!empty($data) && $data[0][0] === 'Phone') {
+        $total_claims = count($data) - 1;
+    } else {
+        $total_claims = count($data);
+    }
 }
 
-// Check if limit reached
+// ----------------- CHECK IF CLAIMS AVAILABLE -----------------
 $claim_available = $total_claims < $total_claim_limit;
 ?>
 <!DOCTYPE html>
